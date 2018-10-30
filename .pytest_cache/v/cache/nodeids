@@ -1,0 +1,8 @@
+[
+  "test_NURBS.py::Test_Nurbs::test_FindSpan",
+  "test_NURBS.py::Test_Nurbs::test_NURBS_BSPLINE_EQUAL",
+  "test_NURBS.py::Test_Nurbs::test_assign_ub",
+  "test_NURBS.py::Test_Nurbs::test_fitting",
+  "test_NURBS.py::Test_Nurbs::test_gn_f",
+  "test_NURBS.py::Test_Nurbs::test_gn_jacobi"
+]
