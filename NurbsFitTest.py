@@ -65,6 +65,7 @@ vis_comp = vis.VisCurve2D()
 test_c.vis = vis_comp
 # test_c.render()
 
+
 # Evaluate derivatives at u = 0.6
 ders1 = test_c.derivatives(0.6, 4)
 

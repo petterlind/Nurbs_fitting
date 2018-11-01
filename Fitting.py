@@ -3,32 +3,10 @@ import pdb
 import geomdl
 from geomdl import helpers
 import copy
+from geomdl.visualization import VisPlotly
+from geomdl.visualization import VisMPL as vis
+import matplotlib.pyplot as plt
 
-
-
-def LUDecomposition(A, Q, sbw):
-    ''' Utility function, p 369
-    
-    Not neccecary
-    
-    To decompose the q*q coefficient matrix with semibandwidth sbw into lower
-    and upper triangular components; for simplicity we assume A is an q*q square
-    array, but a utility should be used which only stores the nonzero band.
-'''
-    pass
-    
-    
-def ForwardBackward(A, q, sbw, rhs, sol):
-    ''' Utility function p.369
-    
-    Not neccecary
-    
-    To perform the forward/backward substitution (see [pres88]); rhs[] is the
-    right hand side of the system (the coordinates of the Q_k), and sol[] is the
-    solution vectir (coordinates of the P_i)
-    '''
-    pass
-    
     
 def assign_ub(Q):
     ''' Sets parameter uk that corresponds to control point Qk
@@ -48,11 +26,11 @@ def assign_ub(Q):
         ub = np.append(ub, np.array(ub[-1] + np.linalg.norm(Q[j] - Q[j - 1]) / d))
     
     np.append(ub, np.array([1]))
-    return ub
+    return ub.tolist()
 
 
 def set_knots(n, p, m, ub):
-    ''' Creates an internal knot knotvector
+    ''' Creates an internal knotvector
     
     Uses eq. 9.68 and 9.69 from BON p 412
     :param n: n+1 control points
@@ -66,7 +44,6 @@ def set_knots(n, p, m, ub):
     :return: U, list of knots
     :rtype: nparray
     '''
-    
     k = n - p + 1
     d = (m + 1) / k
     
@@ -93,8 +70,6 @@ def curve_fit2D(Q, Wq, D, I, Wd, n, p, s=-1):
     : param Q: An array containing the points to be fit( constrained and unconstrain
     ed)
     : type Q: nparray, Q[r+1]
-    : param r: upper index of Q[]
-    : type r: int
     : param Wq: Wq[i] > 0 is weight of unconst Q[i]. Wq[i] < 0, Q[i] constrained
     : type Wq: list of floats, Wq[r+1]
     : param D: An array containing the derivatives; s=-1 means no derivatives spec.
@@ -259,25 +234,38 @@ def Bp(curve, ul, j):
     retrun: lst object
     '''
     
+    # Do a loop for N-dimensional
+    
+    # Function value at nominal point
+    fun_val = curve.evaluate_single(ul)
+    
     # Create two new curves, one with change of x, another with change of y
     curve_dx = copy.deepcopy(curve)
     curve_dy = copy.deepcopy(curve)
     
-    # Set forward finite disturbance to 1%
-    dx = curve_dx.ctrlptsw[j][0] * 1.01 - curve_dx.ctrlptsw[j][0]
-    dy = curve_dy.ctrlptsw[j][1] * 1.01 - curve_dy.ctrlptsw[j][1]
+    # if curve_dx.ctrlptsw[j][0] < 0:
+    #     curve_dx.ctrlptsw[j][0] = 0
+    #     print('WARNING: nurb weights are smaller than zero!')
+    # elif curve_dy.ctrlptsw[j][1] < 0:
+    #     curve_dy.ctrlptsw[j][1] = 0
+    #     print('WARNING: nurb weights are smaller than zero!')
+    
+    # Set forward finite disturbance to 1%,  Log value (transoformed weights e^w)
+    
+    dx = curve_dx.ctrlptsw[j][0] * 1.05 - curve_dx.ctrlptsw[j][0]
+    dy = curve_dy.ctrlptsw[j][1] * 1.05 - curve_dy.ctrlptsw[j][1]
+    
+    if dx == 0:
+        dx = 0.01
+    if dy == 0:
+        dy = 0.01
     
     # Change the values
     curve_dx.ctrlptsw[j][0] += dx
     curve_dy.ctrlptsw[j][1] += dy
     
-    # Function value at nominal point
-    fun_val = curve.evaluate_single(ul)
-    
-    # Function value with change of px
+    # Function value with change of dx, dy
     fun_dx = curve_dx.evaluate_single(ul)
-    
-    # Function value with change of py
     fun_dy = curve_dy.evaluate_single(ul)
     
     der_x = (np.array(fun_dx) - np.array(fun_val)) / dx
@@ -302,16 +290,22 @@ def weight_der(curve, wi, u):
     W = []
     for elem in curve.ctrlptsw:
         W.append(elem[-1])
-        
-    dw = W[wi] * 0.02
-    W[wi] += dw
+    
+    W = np.log(W)
+    W_old = copy.deepcopy(W)
+    dw = W[wi] * 0.01  # one percent increase
+    if dw <= 0:
+        dw = 0.01
+    W[wi] += W[wi] + dw
+    W = np.exp(W).tolist()
     
     # Function value with change of dw
     curve_dw = copy.deepcopy(curve)  # Have to make a new curve!
     for i in range(0, len(curve.ctrlptsw)):
         curve_dw.ctrlptsw[i][-1] = W[i]
-        
+    
     fun_dw = curve_dw.evaluate_single(u)
+    
     return ((np.array(fun_dw) - np.array(fun_val)) / dw).tolist()
     
     
@@ -335,16 +329,8 @@ def gn_jacobi(curve, ub, Q, alpha):
     for elem in curve.ctrlptsw:
         CP.append(elem[:-1])
     
-    # Transformed weights
-    W = []
-    for elem in curve.ctrlptsw:
-        W.append(elem[-1])
-    ew = np.exp(W)  # Transformed weights (not really necceccary here or?)
-    
-    U = curve.knotvector
-    
     # Indexing
-    n = len(W)
+    n = len(curve.ctrlptsw)
     r = len(ub)
     dim = 2  # Dimension, for future update
     
@@ -354,6 +340,7 @@ def gn_jacobi(curve, ub, Q, alpha):
     Jp_lst = list()
     Jw_lst = list()
     Jreg = alpha * np.diag(np.ones((n,)))
+    
     for i in range(0, r):
         
         # Assemble values into Ju-mat
@@ -362,19 +349,23 @@ def gn_jacobi(curve, ub, Q, alpha):
                 Ju_lst.append(curve.derivatives(ub[i], 1)[1])
             else:
                 Ju_lst.append([0] * dim)
-        
+        # Setting up Jp
         for j in range(0, n):
-            # Setting up Jp
             [Bp_unp1, Bp_unp2] = Bp(curve, ub[i], j)
             Jp_lst.extend((Bp_unp1, Bp_unp2))  # Note, possible error in Carlson
-            
+        
+        # Setting up Jw
         for k in range(0, n):
-            # Setting up Jw
             Jw_lst.append(weight_der(curve, k, ub[i]))
+        
+        # check for NAN and replacing with 0
+        Jp_np = np.array(Jp_lst)
+        logic_nan = np.isnan(Jp_lst)
+        Jp_np[logic_nan] = 0
         
         # Assemble the rows
         Ju_row = np.reshape(Ju_lst, (r, 2)).T.tolist()
-        Jp_row = np.reshape(Jp_lst, (2 * n, 2)).T.tolist()
+        Jp_row = np.reshape(Jp_np.tolist(), (2 * n, 2)).T.tolist()
         Jw_row = np.reshape(Jw_lst, (n, 2)).T.tolist()
         
         for i in range(0, dim):
@@ -406,7 +397,7 @@ def gn_f(curve, ub, Q, alpha):
     W = []
     for elem in curve.ctrlptsw:
         W.append(elem[-1])
-    
+        
     for i in range(0, r):
         val = curve.evaluate_single(ub[i]) - Q[i]
         for elem in val:
@@ -414,11 +405,11 @@ def gn_f(curve, ub, Q, alpha):
         
     if isinstance(alpha, float) == True and np.isnan(alpha) != True:
         # isinstance(alpha, np.float64)
-        val = (alpha * np.array(W)).tolist()
+        val = (alpha * np.array(np.log(W))).tolist()
         for elem in val:
             f.append(elem)
     else:
-        return np.linalg.norm(f) / n
+        return np.linalg.norm(f) / (10*n)
         
     return f
     
@@ -439,15 +430,37 @@ def simplebounds(x):
     return out
 
 
-def update_curve(curve, x_p):
+def update_curve(curve, x, r):
     ''' Update curve with new values on u, p and w
     
     Implements transformation of weights so that weights always are positive!
-    '''
-    New_cur = copy.deepcopy(curve)
     
-    ew = np.exp(W)  # Transformed weights (not really necceccary here or?)
-    raise NotImplementedError("This functionality is not implemented at the moment")
+    param: curve, nurbs curve
+    param: x updated x values, list
+    param: r, number of test points, int
+    '''
+    
+    dim = len(curve.ctrlptsw[0]) - 1
+    n = len(curve.ctrlptsw)
+    
+    W = x[(r + dim * n):]  # Note dim*n ctrlpts values
+    ew = np.exp(W).tolist()
+    CP = x[r:(r + dim * n)]
+    
+    # Make new curve object
+    new_curve = copy.deepcopy(curve)
+    
+    i_old = 0
+    CP_list = list()
+    for i in range(dim, len(CP) + 1, dim):
+        CP_list.append(CP[i_old:i])
+        i_old = i
+    
+    for j in range(0, len(ew)):
+        new_curve.ctrlptsw[j] = CP_list[j] + [ew[j]]
+    
+    return new_curve
+    
     
 def gauss_newton2D(N_cur, Q, tol=1e-3, mintol=1e-3):
     ''' Forward gaus newton fit of weights, knots, and CP
@@ -463,61 +476,87 @@ def gauss_newton2D(N_cur, Q, tol=1e-3, mintol=1e-3):
     param: mintol, tolerance wrt step length, float
     '''
     
-    # Numbers
-    n = len(CP)
-    m = len(W)  # length of knot vector
-    r = len(Q)  # Number of experiments
-    
-    # Order of the base functions
-    p = m - n - 1
-    
-    ub = assign_ub(Q)  # Should be same as for the B-spline!
+    # numbers
+    r = len(Q)  # Experiments
+    n = len(N_cur.ctrlptsw)  # Ctrlpts, weights
     
     # Dummy values
     J = 1000
     p = 1
     step_length = 1000
     
+    # Initialize x
+    CP_list = list()
+    for CP in N_cur.ctrlptsw:
+        for each in CP[:-1]:
+            CP_list.append(each)
+    W = []
+    for elem in N_cur.ctrlptsw:
+        W.append(elem[-1])
+    ub = assign_ub(Q)  # Should be same as for the B-spline!
+    
+    x = ub + CP_list + np.log(W).tolist()
+    
+    # Hard Coded
+    x[r] = 0.0
+    x[r + 1] = 1.0
+    x[r + 2 * n - 2] = 1.0
+    x[r + 2 * n - 1] = 0.0
+    N_cur = update_curve(N_cur, x, r)
+    
+    
     while np.linalg.norm(J * p) > tol or step_length > mintol:
-        
-        
-        # U, CP and W
-        CP_list = list()
-        for CP in N_cur.ctrlptsw:
-            for each in CP[:-1]:
-                CP_list.append(each)
-        
-        # Transformed weights
-        W = []
-        for elem in N_cur.ctrlptsw:
-            W.append(elem[-1])
-        
-        x = ub + W + CP_list
         
         alpha = gn_f(N_cur, ub, Q, np.nan)
         
-        #  Calculate J(x) and f(x)
-        J = np.ndarray(gn_jacobi(N_cur, ub, Q, alpha))
-        f = np.ndarray(gn_f(N_cur, ub, Q, alpha))
         
-        p = np.linalg.solve(np.dot(J.T, J), -np.dot(J, f))
-        g = 1
+        #  Calculate J(x) and f(x)
+        J = np.array(gn_jacobi(N_cur, ub, Q, alpha))
+        f = np.array(gn_f(N_cur, ub, Q, alpha))
+        p = (np.linalg.solve(np.matmul(J.T, J), -np.dot(J.T, f))).tolist()
+        
+        # print(np.linalg.norm(f))
+        # print('--------------------------------')
+        # print(N_cur.ctrlptsw)
+        
+        g = 1.0  # Dummy
         f_p = f  # Dummy
+        iter = 0
         
         while np.linalg.norm(f_p) >= np.linalg.norm(f) and iter < 1000:
-            p_g = p * g
-            x_p = x + p_g
-            x_p[0:r] = simplebounds(x_p[0:r])
+            p_g = (np.array(p) * g).tolist()
+            x_p = (np.array(x) + np.array(p_g)).tolist()
             
-            New_cur = update_curve(N_cur, x_p)
+            # Set location of first and last controlpoints as they where in x!
+            # x_p[r] = x[r]  # first
+            # x_p[r + 2 * n - 2] = x[r + 2 * n - 2]  # last
+            
+            # Hard Coded
+            x_p[r] = 0.0
+            x_p[r + 1] = 1.0
+            x_p[r + 2 * n - 2] = 1.0
+            x_p[r + 2 * n - 1] = 0.0
+            
+            ub = simplebounds(x_p[0:r])
+            # print(ub)
+            New_cur = update_curve(N_cur, x_p, r)
             f_p = gn_f(New_cur, ub, Q, alpha)
             g = g * 0.5
             
-            if iter == 1000:
-                raise ValueError("more than 1000 iteration in gauss_newton2D algorithm")
-        
-        # Set the new curve as the best fit!
+            if iter == 999:
+                print('1000 iterations!')
+                # raise ValueError("more than 1000 iteration in gauss_newton2D algorithm")
+            iter += 1
+            print(np.linalg.norm(f_p))
+            
+        New_cur.delta = 0.01
+        New_cur.evaluate()
+        vis_comp = VisPlotly.VisCurve2D()
+        New_cur.vis = vis_comp
+        New_cur.render()
+        # plt.gcf().clear()
         N_cur = copy.deepcopy(New_cur)
-        
-    return N_cur
+        x = copy.deepcopy(x_p)
+            
+    return New_cur
     
