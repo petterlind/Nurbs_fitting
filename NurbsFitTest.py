@@ -78,7 +78,7 @@ plt.plot([ders1[0][0], ders1[0][0] + ders1[2][0]], [ders1[0][1], ders1[0][1] + d
 pdb.set_trace()
 # Adapt nurb from B-spline curve
 # test_c
-# test_c_nurb = Fitting.gauss_newton2D(, tol=1e-3, mintol=1e-3)
+test_c_nurb = Fitting.gauss_newton2D(, tol=1e-3, mintol=1e-3)
 
 
 # good to have something here to set a breakpoint to.

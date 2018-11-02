@@ -179,9 +179,11 @@ class Test_Nurbs(unittest.TestCase):
         N_fit = F.gauss_newton2D(self.N_cur, self.points)
     
         # Plot (debug)
-        # vis_fit = VisPlotly.VisCurve2D()
-        # N_fit.vis = vis_fit
-        # N_fit.render()
+        fig = plt.figure(num=1)
+        vis_fit = vis.VisCurve2D()
+        N_fit.vis = vis_fit
+        N_fit.render()
+        # self.assertTrue(isinstance(N_fit, N) # Less or equal error?
         
-        Do harder geometry!
+        
         

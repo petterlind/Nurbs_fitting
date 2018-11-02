@@ -251,14 +251,13 @@ def Bp(curve, ul, j):
     #     print('WARNING: nurb weights are smaller than zero!')
     
     # Set forward finite disturbance to 1%,  Log value (transoformed weights e^w)
-    
-    dx = curve_dx.ctrlptsw[j][0] * 1.05 - curve_dx.ctrlptsw[j][0]
-    dy = curve_dy.ctrlptsw[j][1] * 1.05 - curve_dy.ctrlptsw[j][1]
+    dx = curve_dx.ctrlptsw[j][0] * (1 + 1e-4) - curve_dx.ctrlptsw[j][0]
+    dy = curve_dy.ctrlptsw[j][1] * (1 + 1e-4) - curve_dy.ctrlptsw[j][1]
     
     if dx == 0:
-        dx = 0.01
+        dx = 1e-4
     if dy == 0:
-        dy = 0.01
+        dy = 1e-4
     
     # Change the values
     curve_dx.ctrlptsw[j][0] += dx
@@ -293,9 +292,9 @@ def weight_der(curve, wi, u):
     
     W = np.log(W)
     W_old = copy.deepcopy(W)
-    dw = W[wi] * 0.01  # one percent increase
+    dw = W[wi] * 1e-4  # one percent increase
     if dw <= 0:
-        dw = 0.01
+        dw = 1e-4
     W[wi] += W[wi] + dw
     W = np.exp(W).tolist()
     
@@ -409,7 +408,7 @@ def gn_f(curve, ub, Q, alpha):
         for elem in val:
             f.append(elem)
     else:
-        return np.linalg.norm(f) / (10*n)
+        return np.linalg.norm(f) / (r * n * 10)
         
     return f
     
@@ -502,28 +501,22 @@ def gauss_newton2D(N_cur, Q, tol=1e-3, mintol=1e-3):
     x[r + 1] = 1.0
     x[r + 2 * n - 2] = 1.0
     x[r + 2 * n - 1] = 0.0
+    
     N_cur = update_curve(N_cur, x, r)
-    
-    
-    while np.linalg.norm(J * p) > tol or step_length > mintol:
+    while np.linalg.norm(J * p) > tol and step_length > mintol:
         
         alpha = gn_f(N_cur, ub, Q, np.nan)
-        
         
         #  Calculate J(x) and f(x)
         J = np.array(gn_jacobi(N_cur, ub, Q, alpha))
         f = np.array(gn_f(N_cur, ub, Q, alpha))
         p = (np.linalg.solve(np.matmul(J.T, J), -np.dot(J.T, f))).tolist()
         
-        # print(np.linalg.norm(f))
-        # print('--------------------------------')
-        # print(N_cur.ctrlptsw)
-        
         g = 1.0  # Dummy
         f_p = f  # Dummy
         iter = 0
         
-        while np.linalg.norm(f_p) >= np.linalg.norm(f) and iter < 1000:
+        while np.linalg.norm(f_p) >= np.linalg.norm(f) and iter < 100:
             p_g = (np.array(p) * g).tolist()
             x_p = (np.array(x) + np.array(p_g)).tolist()
             
@@ -538,22 +531,31 @@ def gauss_newton2D(N_cur, Q, tol=1e-3, mintol=1e-3):
             x_p[r + 2 * n - 1] = 0.0
             
             ub = simplebounds(x_p[0:r])
-            # print(ub)
             New_cur = update_curve(N_cur, x_p, r)
             f_p = gn_f(New_cur, ub, Q, alpha)
             g = g * 0.5
             
-            if iter == 999:
-                print('1000 iterations!')
+            if iter == 99:
+                print('100 iterations!')
                 # raise ValueError("more than 1000 iteration in gauss_newton2D algorithm")
             iter += 1
-            print(np.linalg.norm(f_p))
             
         New_cur.delta = 0.01
         New_cur.evaluate()
-        vis_comp = VisPlotly.VisCurve2D()
-        New_cur.vis = vis_comp
-        New_cur.render()
+        # vis_comp = vis.VisCurve2D()
+        # New_cur.vis = vis_comp
+        fig = plt.figure(num=1)
+        
+        x_plot = []
+        y_plot = []
+        for elem in New_cur.evalpts:
+            x_plot.append(elem[0])
+            y_plot.append(elem[1])
+            
+        plt.plot(x_plot, y_plot)  # Nicer plot
+        
+        pdb.set_trace()
+        # New_cur.render()
         # plt.gcf().clear()
         N_cur = copy.deepcopy(New_cur)
         x = copy.deepcopy(x_p)
